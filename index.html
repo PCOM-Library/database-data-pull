@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<meta http-equiv="X-UA-Compatible" content="ie=edge">
+	
+	<style>
+		body {
+			padding: .25rem 1rem;
+			max-width: 90ch;
+		}
+		
+		p {
+			margin: 0;
+		}
+		
+		h1 {
+			line-height: 1;
+			font-size: 2.25rem;
+			font-weight: bold;
+			margin: 0 0 1rem;
+			border-top: solid 3px;			
+			border-bottom: solid 3px;
+			padding: .375rem;
+		}
+		h2 {
+			line-height: 1;
+			font-size: 1.625rem;
+			font-weight: bold;
+			border-bottom: solid 2px;
+			padding-bottom: .25rem;
+			margin: 1.5rem 0 .5rem;
+			
+		}
+		
+		label {
+			display: block;
+			line-height: 1;
+			font-size: 1.125rem;
+			font-weight: bold;
+			margin: 1rem 0 .375rem;
+		}
+		
+		button, textarea {
+			font: inherit;
+			border: solid 2px;
+		}
+		
+		textarea {
+			width: 100%;
+			height: 7rem;
+			padding: .25rem;
+			display: block;
+			font-size: .9125rem;
+			resize: vertical;
+		}
+	
+		button {
+			padding: .5em .5em;
+			font-weight: bold;
+		}
+	
+		button#copy {
+			margin-top: .375rem;
+		}
+	</style>
+	
+	<title>Grab Current Databases Tool</title>
+</head>
+<body>
+
+<h1>Grab Current Databases Tool</h1>
+
+<p>
+Please do not share this page unless you have contacted Kate Deibel first. 
+The usage of the API here is not the most secure. 
+</p>
+
+<h2>Running</h2>
+
+<p>
+Run the app below to fetch all databases assets found on the PCOM 
+Research Guides. Then, use the <i>Copy to Clipboard</i> button and 
+paste into a blank sheet in Excel or Sheets. The data is tab-delimited 
+so it should paste without issue. You will then have to format the data 
+as you will. Feel free to delete any unneeded columns as there are no 
+formulas to mess up.
+</p>
+
+<label for="text-tsv">TSV (Tab-Separated Values)</label>
+<textarea id="text-tsv"></textarea>
+<button id="fetch">Fetch Database Data</button>
+<button id="copy">Copy to Clipboard</button> <span id="copy-feedback"></span>
+
+<h2>Debugging</h2>
+<button id="clear">Clear All Boxes</button>
+
+<label for="text-log">Log</label>
+<textarea id="text-log"></textarea>
+
+<label for="text-response">Raw Response (JSON)</label>
+<textarea id="text-response"></textarea>
+
+
+
+<script>
+	const VENDORS = {
+		'43254': 'Alexander Street Video',
+		'137572': 'American Heart Association',
+		'141254': 'American Pharmacists Association',
+		'49865': 'American Psychological Association',
+		'101138': 'Antimicrobial Therapy, Inc.',
+		'141255': 'Aquifer',
+		'103923': 'BMJ',
+		'141342': 'Cochrane Library',
+		'140503': 'Draw It to Know It',
+		'43090': 'EBSCO',
+		'137573': 'Elsevier',
+		'137594': 'Exam Master',
+		'141250': 'Government Organization',
+		'141352': 'Henry Stewart Talks',
+		'141353': 'Journal of Medical Insight (JOMI)',
+		'141354': 'Journal of Visualized Experiments (JoVE)',
+		'140498': 'Massachusetts Medical Society',
+		'43087': 'McGraw-Hill Medical',
+		'137597': 'National Library of Medicine',
+		'141720': 'New York Times',
+		'141252': 'Non-Governmental Organization (NGO)',
+		'141351': 'PCOM',
+		'141343': 'Primal Pictures',
+		'67281': 'ProQuest',
+		'43092': 'Rittenhouse'
+	}
+
+	var theJSON;
+	function timeStamp(timezone) {
+		let now = new Date( (new Date()).toLocaleString('en-US', { timeZone: timezone }) );
+		let ts = '';
+		ts = ts + now.getFullYear() + '-';
+		ts = ts + String(now.getMonth()).padStart(2,0) + '-';
+		ts = ts + String(now.getDate()).padStart(2,0) + ' ';
+		ts = ts + String(now.getHours()).padStart(2,0) + ':';
+		ts = ts + String(now.getMinutes()).padStart(2,0) + ':';
+		ts = ts + String(now.getSeconds()).padStart(2,0) + '.';
+		ts = ts + String((new Date()).getMilliseconds()).padStart(3,0);
+		
+		return ts;
+	}
+	
+	function logEvent(event) {
+		let timestamp = timeStamp('America/New_York');
+
+		let log = document.getElementById('text-log');
+		if(log.value.length > 0)
+			log.value = log.value + '\n' + '[' + timestamp + '] ' + event;
+		else
+			log.value = '[' + timestamp + '] ' + event;		
+		log.scrollTop = log.scrollHeight; /* moves scroll to bottom */
+	}
+
+	async function fetchDatabases() {
+		let raw = document.getElementById('text-response');
+		const url = 'https://lgapi-us.libapps.com/1.1/assets?site_id=4408&key=6dcc3700587a2b4c54429df50331c65c&asset_types=10&expand=friendly_url,subjects,icons,az_types,az_props,new_trial';
+		try {
+			logEvent('Fetching data...');
+			response = await fetch(url);
+			logEvent('Processing received data...');
+			json = await response.json();
+			raw.value = JSON.stringify(json);
+			logEvent('Converting to TSV...');
+			await processJSON(json);
+			logEvent('Processing complete.');
+			theJSON = json;
+		}
+		catch(error) {
+			logEvent('Fetch cancelled due to:\n\t' + error);
+		}
+	}
+	
+	async function processJSON(json) {
+		let joiner = '\t';
+	
+		let tsv = document.getElementById('text-tsv');
+		let headers = [
+			'ID',
+			'Database',
+			'Has Description',
+			'Has More Info',
+			'Vendor',
+			'Raw URL',
+			'Proxy Enabled',
+			'Friendly URL',
+			'Types',
+			'Icons',
+			'Subjects',
+			'Best Bests'
+		];
+		
+		tsv.value = headers.join(joiner);
+		
+		// process each book asset as a row 
+		for(i=0; i<json.length; i++) {
+			let db = [];
+			
+			// id
+			db.push( json[i]['id'] );
+			
+			// title
+			db.push( json[i]['name'] );
+
+			// has description
+			db.push( (json[i]['description'].length > 0) );
+			
+			// has more info
+			db.push( (json[i]['meta']['more_info'].length > 0) );
+
+			// vendor
+			let v = json[i]['az_vendor_id'];
+			if(VENDORS.hasOwnProperty(''+v))
+				db.push( VENDORS[''+v] );
+			else
+				db.push( '' );
+			
+			// raw url
+			db.push( json[i]['url'] );
+			// proxied
+			db.push( (json[i]['meta']['enable_proxy']==1) ? true : false );
+			
+			// friendly url
+			if( json[i].hasOwnProperty('friendly_url'))
+				db.push( json[i]['friendly_url'] );
+			else
+				db.push( '' );
+			
+			// types
+			if( json[i].hasOwnProperty('az_types') ) {
+				let types = [];
+				let t_len = json[i]['az_types'].length;
+				for(t=0; t<t_len; t++)
+					types.push( json[i]['az_types'][t]['name'] );
+				// list of types
+				db.push( types.join('; ') );
+			}
+			else {
+				// list of types
+				db.push( '' );
+			}
+					
+			// icons
+			if( json[i].hasOwnProperty('icons') ) {
+				let icons = [];
+				let icon_length = json[i]['icons'].length;
+				for(ic=0; ic<icon_length; ic++) 
+					icons.push( json[i]['icons'][ic]['description'] );
+				db.push( icons.join('; ') );
+			}
+			else {
+				db.push( '' );
+			}
+			
+			// subjects / best bets
+			if( json[i].hasOwnProperty('subjects') ) {
+				let subjects = [];
+				let best_bets = [];
+				let s_len = json[i]['subjects'].length;
+				for(s=0; s<s_len; s++) {
+					let name = json[i]['subjects'][s]['name'];
+					subjects.push( name );
+					if( json[i]['subjects'][s]['featured'] > 0)
+						best_bets.push( name );
+				}
+				// list of subjects
+				db.push( subjects.join('; ') );
+				// list of best bets
+				db.push( best_bets.join('; ') );				
+			}
+			else {
+				// list of subjects
+				db.push('');
+				// list of best bets
+				db.push('');
+			}
+						
+			tsv.value = tsv.value + '\n' + db.join(joiner);
+		}
+	}
+	
+	async function copyTSVtoClipboard() {
+		try {
+			document.getElementById('copy-feedback').value = '';
+			let txt = document.getElementById('text-tsv').value;
+			await navigator.clipboard.writeText(txt);
+			document.getElementById('copy-feedback').innerHTML = 'Copied to clipboard.';
+			setTimeout(() => { document.getElementById('copy-feedback').innerHTML = ''; }, 4000);
+			
+		} catch (err) {
+			document.getElementById('copy-feedback').innerHTML = 'Copy failed.';
+			console.error('Failed to copy text: ', err);
+		}
+	}
+	
+	// Onload events
+	document.getElementById('fetch').addEventListener('click', function(evt) {
+		fetchDatabases();
+	});
+	
+	document.getElementById('clear').addEventListener('click', function(evt) {
+		document.getElementById('text-log').value = '';
+		document.getElementById('text-response').value = '';
+		document.getElementById('text-tsv').value = '';
+		document.getElementById('copy-feedback').innerHTML = '';
+	});
+	
+	document.getElementById('copy').addEventListener('click', function(evt) {
+		copyTSVtoClipboard();
+	});
+	
+</script>
+
+
+</body>
+</html>
+
